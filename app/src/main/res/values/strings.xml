@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Docker Mobile</string>
+    <string name="notif_channel_vm">Virtual machine</string>
+    <string name="notif_vm_running_title">Docker VM running</string>
+    <string name="notif_vm_running_text">The embedded Alpine Linux VM is hosting the Docker daemon.</string>
+    <string name="notif_vm_booting">Starting the embedded VM…</string>
+    <string name="action_stop_vm">Stop VM</string>
+</resources>
