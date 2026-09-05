@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
@@ -151,18 +152,18 @@ fun ContainersScreen(
     if (showDeploy) {
         DeployDialog(
             onDismiss = { showDeploy = false },
-            onQuickRun = { run ->
+            onQuickRun = { run, restartAlways ->
                 repo.runImage(
                     image = run.image,
                     name = null,
                     portPairs = run.ports,
                     env = run.env,
                     cmd = run.cmd,
-                    restartAlways = false,
+                    restartAlways = restartAlways,
                 )
                 showDeploy = false
             },
-            onCustomRun = { image, portText, envText ->
+            onCustomRun = { image, portText, envText, restartAlways ->
                 val pairs = portText.split(',')
                     .mapNotNull { entry ->
                         val parts = entry.trim().split(':')
@@ -176,7 +177,7 @@ fun ContainersScreen(
                     portPairs = pairs,
                     env = envText.split(',').map { it.trim() }.filter { it.contains('=') },
                     cmd = null,
-                    restartAlways = false,
+                    restartAlways = restartAlways,
                 )
                 showDeploy = false
             },
@@ -250,12 +251,15 @@ private fun ContainerCard(
 @Composable
 private fun DeployDialog(
     onDismiss: () -> Unit,
-    onQuickRun: (QuickRun) -> Unit,
-    onCustomRun: (image: String, ports: String, env: String) -> Unit,
+    onQuickRun: (QuickRun, Boolean) -> Unit,
+    onCustomRun: (image: String, ports: String, env: String, restartAlways: Boolean) -> Unit,
 ) {
     var image by remember { mutableStateOf("") }
     var ports by remember { mutableStateOf("8080:80") }
     var env by remember { mutableStateOf("") }
+    // Without a restart policy a container stays down after the VM (or the
+    // phone) restarts, which defeats leaving the phone up as a server.
+    var restartAlways by remember { mutableStateOf(true) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -268,7 +272,7 @@ private fun DeployDialog(
                     Row(
                         Modifier
                             .fillMaxWidth()
-                            .clickable { onQuickRun(run) }
+                            .clickable { onQuickRun(run, restartAlways) }
                             .padding(vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -305,11 +309,26 @@ private fun DeployDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
+                Spacer(Modifier.height(6.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(
+                        checked = restartAlways,
+                        onCheckedChange = { restartAlways = it },
+                    )
+                    Column {
+                        Text("Restart automatically", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            "Comes back after a VM or phone restart",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
             }
         },
         confirmButton = {
             TextButton(
-                onClick = { if (image.isNotBlank()) onCustomRun(image.trim(), ports, env) },
+                onClick = { if (image.isNotBlank()) onCustomRun(image.trim(), ports, env, restartAlways) },
             ) { Text("Run") }
         },
         dismissButton = {

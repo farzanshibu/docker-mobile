@@ -1,0 +1,74 @@
+name: Build VM assets
+
+# vm-assets/ is build output and is never committed (rootfs.img alone is 1.5 GB).
+# This builds it once on CI and attaches it to a GitHub Release, so users can
+# point the app's asset mirror at a URL instead of running Docker themselves.
+#
+#   VM tab -> Asset mirror URL -> https://github.com/<owner>/<repo>/releases/download/<tag>
+#   -> Download all
+#
+# The app fetches vmlinuz-virt, initramfs-virt and rootfs.img.gz from that
+# directory-style base URL, so the release must expose exactly those names.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish the assets under"
+        required: true
+        default: "vm-assets-v1"
+      rootfs_size_mb:
+        description: "rootfs image size in MB"
+        required: true
+        default: "4096"
+  push:
+    tags:
+      - "vm-assets-*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    # arm64 runner: the guest is aarch64, so this builds natively and avoids
+    # binfmt emulation. Free for public repositories.
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build VM assets
+        env:
+          ROOTFS_SIZE_MB: ${{ github.event.inputs.rootfs_size_mb || '4096' }}
+        run: |
+          ./tools/build-vm-image.sh "$GITHUB_WORKSPACE/vm-assets"
+
+      - name: Checksums
+        working-directory: vm-assets
+        run: |
+          rm -f rootfs.img              # only the .gz is published
+          sha256sum vmlinuz-virt initramfs-virt rootfs.img.gz | tee SHA256SUMS
+          ls -lh
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          name: VM assets ${{ github.event.inputs.tag || github.ref_name }}
+          body: |
+            Alpine + Docker VM assets for Docker Mobile, built by
+            `tools/build-vm-image.sh` on an arm64 runner.
+
+            In the app: **VM tab → Asset mirror URL →**
+            `https://github.com/${{ github.repository }}/releases/download/${{ github.event.inputs.tag || github.ref_name }}`
+            **→ Download all**
+
+            The guest root password is the script default (`dockermobile`).
+            Rebuild with `ROOT_PW=...` before using this on a network you
+            do not control.
+          files: |
+            vm-assets/vmlinuz-virt
+            vm-assets/initramfs-virt
+            vm-assets/rootfs.img.gz
+            vm-assets/SHA256SUMS

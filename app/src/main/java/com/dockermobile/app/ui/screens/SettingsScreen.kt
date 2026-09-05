@@ -1,5 +1,10 @@
 package com.dockermobile.app.ui.screens
 
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.PowerManager
+import android.provider.Settings as AndroidSettings
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -37,6 +42,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.dockermobile.app.core.EndpointMode
 import com.dockermobile.app.core.LocalGraph
@@ -49,6 +55,7 @@ import kotlinx.coroutines.launch
 fun SettingsScreen(onBack: () -> Unit) {
     val graph = LocalGraph.current
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
 
     val settings by graph.settings.settings.collectAsState(initial = null)
@@ -177,6 +184,30 @@ fun SettingsScreen(onBack: () -> Unit) {
                         },
                     )
                 }
+                Spacer(Modifier.height(12.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Start the VM when the phone boots")
+                        Text(
+                            if (s.startOnBoot) "On — the daemon comes back after a reboot"
+                            else "Off — the VM must be started by hand after a reboot",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = s.startOnBoot,
+                        onCheckedChange = { on ->
+                            scope.launch {
+                                graph.settings.setStartOnBoot(on)
+                                snackbar.showSnackbar(
+                                    if (on) "The VM will start on boot (open the app once after installing)"
+                                    else "The VM will not start on boot"
+                                )
+                            }
+                        },
+                    )
+                }
                 Spacer(Modifier.height(8.dp))
                 Text(
                     "Only container ports you publish are shared. The Docker API and the " +
@@ -186,6 +217,53 @@ fun SettingsScreen(onBack: () -> Unit) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            SectionCard(title = "Background runner") {
+                val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+                var unrestricted by remember {
+                    mutableStateOf(pm.isIgnoringBatteryOptimizations(context.packageName))
+                }
+                KeyValueRow(
+                    "Battery",
+                    if (unrestricted) "Unrestricted ✓" else "Optimised — Android may throttle the VM",
+                )
+                KeyValueRow("Wi-Fi", "High-performance lock held while the VM runs")
+                KeyValueRow("CPU", "Partial wake lock held while the VM runs")
+                Spacer(Modifier.height(10.dp))
+                if (!unrestricted) {
+                    Text(
+                        "Doze will suspend the VM once the screen has been off for a while, " +
+                            "which drops any port you are serving. Allow unrestricted battery " +
+                            "use to run this phone as a server.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Button(onClick = {
+                        runCatching {
+                            context.startActivity(
+                                Intent(
+                                    AndroidSettings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                                    Uri.parse("package:" + context.packageName),
+                                )
+                            )
+                        }.onFailure {
+                            // Some OEM builds hide the direct request; fall back to the list.
+                            runCatching {
+                                context.startActivity(
+                                    Intent(AndroidSettings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                                )
+                            }
+                        }
+                    }) { Text("Allow unrestricted battery use") }
+                } else {
+                    Button(onClick = {
+                        unrestricted = pm.isIgnoringBatteryOptimizations(context.packageName)
+                    }) { Text("Re-check") }
+                }
             }
 
             Spacer(Modifier.height(12.dp))

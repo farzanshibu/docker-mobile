@@ -40,6 +40,11 @@ data class AppSettings(
      * on loopback regardless of this flag.
      */
     val exposeOnLan: Boolean = false,
+    /**
+     * Boot the embedded VM automatically after the device restarts, so the
+     * phone comes back as a server without anyone opening the app.
+     */
+    val startOnBoot: Boolean = false,
 )
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "dockermobile_settings")
@@ -59,6 +64,7 @@ class SettingsRepository(private val app: Application) {
         val vmCpus = intPreferencesKey("vm_cpus")
         val assetMirror = stringPreferencesKey("asset_mirror")
         val exposeOnLan = booleanPreferencesKey("expose_on_lan")
+        val startOnBoot = booleanPreferencesKey("start_on_boot")
     }
 
     val settings: Flow<AppSettings> = app.dataStore.data.map { p ->
@@ -72,6 +78,7 @@ class SettingsRepository(private val app: Application) {
             vmCpus = p[K.vmCpus] ?: 2,
             assetMirror = p[K.assetMirror] ?: "",
             exposeOnLan = p[K.exposeOnLan] ?: false,
+            startOnBoot = p[K.startOnBoot] ?: false,
         )
     }
 
@@ -85,6 +92,7 @@ class SettingsRepository(private val app: Application) {
     suspend fun setVmCpus(n: Int) = app.dataStore.edit { it[K.vmCpus] = n.coerceIn(1, 8) }
     suspend fun setAssetMirror(url: String) = app.dataStore.edit { it[K.assetMirror] = url.trim() }
     suspend fun setExposeOnLan(on: Boolean) = app.dataStore.edit { it[K.exposeOnLan] = on }
+    suspend fun setStartOnBoot(on: Boolean) = app.dataStore.edit { it[K.startOnBoot] = on }
 }
 
 /**

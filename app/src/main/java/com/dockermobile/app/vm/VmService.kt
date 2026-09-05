@@ -8,6 +8,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
@@ -31,6 +32,7 @@ class VmService : Service() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var wakeLock: PowerManager.WakeLock? = null
+    private var wifiLock: WifiManager.WifiLock? = null
 
     private val graph: AppGraph by lazy { (application as com.dockermobile.app.DockMobileApp).graph }
 
@@ -56,6 +58,7 @@ class VmService : Service() {
         ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, type)
 
         acquireWakeLock()
+        acquireWifiLock()
 
         scope.launch {
             graph.vm.phase.collect { phase ->
@@ -94,8 +97,37 @@ class VmService : Service() {
         wakeLock = null
     }
 
+    /**
+     * A PARTIAL_WAKE_LOCK keeps the CPU alive but says nothing about the radio:
+     * with the screen off Wi-Fi drops into power save, which shows up as
+     * seconds-long stalls (or dropped connections) on a published port. The
+     * high-performance Wi-Fi lock is what keeps a phone usable as a server.
+     */
+    private fun acquireWifiLock() {
+        if (wifiLock?.isHeld == true) return
+        val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager ?: return
+        val mode = if (Build.VERSION.SDK_INT >= 29) {
+            WifiManager.WIFI_MODE_FULL_LOW_LATENCY
+        } else {
+            @Suppress("DEPRECATION")
+            WifiManager.WIFI_MODE_FULL_HIGH_PERF
+        }
+        wifiLock = runCatching {
+            wm.createWifiLock(mode, "DockerMobile:vm").apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+        }.getOrNull()
+    }
+
+    private fun releaseWifiLock() {
+        runCatching { wifiLock?.release() }
+        wifiLock = null
+    }
+
     override fun onDestroy() {
         releaseWakeLock()
+        releaseWifiLock()
         scope.cancel()
         super.onDestroy()
     }
