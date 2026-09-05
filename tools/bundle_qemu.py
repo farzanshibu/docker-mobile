@@ -9,7 +9,7 @@ and every DT_NEEDED/DT_SONAME referring to it rewritten. The replacement name
 is always shorter than the original ("libz.so.1" -> "libz1.so"), so the strings
 are patched in place inside .dynstr and no offsets move.
 """
-import os, re, sys, shutil, struct, subprocess, urllib.request, urllib.parse
+import os, re, sys, shutil, struct, subprocess, tarfile, urllib.request, urllib.parse
 
 REPO = "https://packages.termux.dev/apt/termux-main"
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -92,16 +92,40 @@ def fetch(pkgs, name):
 
 
 def unpack(deb, into):
+    """Extract a .deb: the outer `ar` container, then its data tarball."""
     os.makedirs(into, exist_ok=True)
-    subprocess.run(["tar", "xf", os.path.abspath(deb)], cwd=into, check=True)
-    data = os.path.join(into, "data.tar.xz")
-    if not os.path.exists(data):
-        for cand in ("data.tar.gz", "data.tar.zst", "data.tar"):
-            p = os.path.join(into, cand)
-            if os.path.exists(p):
-                data = p
-                break
-    subprocess.run(["tar", "xf", os.path.abspath(data)], cwd=into, check=True)
+    deb = os.path.abspath(deb)
+
+    # A .deb is an `ar` archive. bsdtar (the default tar on macOS) reads those
+    # directly; GNU tar on Linux does not, so fall back to ar(1) there.
+    for cmd in (["tar", "xf", deb], ["bsdtar", "xf", deb], ["ar", "x", deb]):
+        try:
+            subprocess.run(cmd, cwd=into, check=True,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            break
+        except (FileNotFoundError, subprocess.CalledProcessError):
+            continue
+    else:
+        raise RuntimeError(f"cannot unpack {deb}: need bsdtar or ar")
+
+    data = next(
+        (os.path.join(into, n) for n in
+         ("data.tar.xz", "data.tar.gz", "data.tar.bz2", "data.tar", "data.tar.zst")
+         if os.path.exists(os.path.join(into, n))),
+        None,
+    )
+    if data is None:
+        raise RuntimeError(f"no data tarball inside {deb}")
+
+    # tarfile handles xz/gz/bz2 from the stdlib, so this works on hosts whose
+    # tar has no xz support (and without shelling out at all).
+    try:
+        with tarfile.open(data, "r:*") as tf:
+            tf.extractall(into, filter="tar")
+    except tarfile.ReadError:
+        # .zst is not in the stdlib on older Pythons; let an external tar try.
+        subprocess.run(["tar", "xf", data], cwd=into, check=True)
+
 
 # ------------------------------------------------------------------- ELF
 
