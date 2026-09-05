@@ -194,8 +194,10 @@ class VmController(
             listOf("-machine", "virt", "-cpu", "cortex-a57", "-accel", "tcg,thread=multi")
         }
         // QEMU's compiled-in datadir does not exist on Android, so point -L at
-        // the blobs shipped next to the VM assets (virtio PCI devices refuse to
-        // start without their option ROM).
+        // the blobs shipped next to the VM assets if they happen to be there.
+        // Nothing here depends on them: the guest is direct-booted with -kernel
+        // and every virtio device is given an empty romfile= below, so QEMU
+        // never looks for an option ROM it cannot find.
         val dataDir = File(workDir, "qemu-data")
         val dataArgs = if (dataDir.isDirectory) listOf("-L", dataDir.absolutePath) else emptyList()
 
@@ -210,9 +212,12 @@ class VmController(
             "-initrd", assets.initramfsFile.absolutePath,
             "-append", "console=ttyAMA0 root=/dev/vda rw modules=ext4 quiet",
             "-drive", "if=none,id=hd0,format=raw,file=${assets.rootfsFile.absolutePath}",
-            "-device", "virtio-blk-pci,drive=hd0",
+            // romfile=: without a datadir QEMU cannot load efi-virtio.rom and
+            // aborts at startup. The ROM is only a PXE/boot-from-device stub,
+            // which direct kernel boot never uses.
+            "-device", "virtio-blk-pci,drive=hd0,romfile=",
             "-netdev", "user,id=n0,hostfwd=tcp:127.0.0.1:${s.daemonPort}-:2375,hostfwd=tcp:127.0.0.1:${s.sshPort}-:22",
-            "-device", "virtio-net-pci,netdev=n0",
+            "-device", "virtio-net-pci,netdev=n0,romfile=",
             // server=on,wait=off: QEMU creates and listens on these sockets
             // instead of trying to connect to something already there.
             "-monitor", "unix:${monitorSocket.absolutePath},server=on,wait=off",
