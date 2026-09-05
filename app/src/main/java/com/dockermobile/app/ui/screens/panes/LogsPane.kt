@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -31,7 +32,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.dockermobile.app.core.LocalGraph
+import com.dockermobile.app.ui.components.MinTouchTarget
 import com.dockermobile.app.ui.components.MonoText
+import com.dockermobile.app.ui.theme.AppTheme
 
 /**
  * Live `docker logs -f`: streams via the Engine API, auto-scrolls while
@@ -66,32 +69,38 @@ fun LogsPane(containerId: String) {
         }
     }
 
-    Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
+    Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         Spacer(Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
-                placeholder = { Text("Filter logs…") },
+                placeholder = { Text("Filter logs") },
                 leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
                 singleLine = true,
+                shape = MaterialTheme.shapes.small,
                 modifier = Modifier.weight(1f),
             )
             Spacer(Modifier.width(8.dp))
-            IconButton(onClick = { follow = !follow }) {
+            // Follow state is named as well as tinted, so it reads without
+            // relying on the colour of the glyph.
+            IconButton(
+                onClick = { follow = !follow },
+                modifier = Modifier.size(MinTouchTarget),
+            ) {
                 Icon(
                     Icons.Filled.VerticalAlignBottom,
-                    contentDescription = "Follow",
+                    contentDescription = if (follow) "Stop following the log" else "Follow the log",
                     tint = if (follow) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                    else AppTheme.colors.labelSecondary,
                 )
             }
         }
         Spacer(Modifier.height(6.dp))
         Text(
-            "${displayed.size} lines · follow ${if (follow) "on" else "off"}",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            "${displayed.size} lines · following ${if (follow) "on" else "off"}",
+            style = MaterialTheme.typography.labelMedium,
+            color = AppTheme.colors.labelSecondary,
         )
         Spacer(Modifier.height(6.dp))
 

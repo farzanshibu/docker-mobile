@@ -39,7 +39,7 @@ fun InspectPane(containerId: String) {
         }
     }
 
-    Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
+    Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         Spacer(Modifier.height(10.dp))
         error?.let {
             Text("Failed to inspect: $it", color = MaterialTheme.colorScheme.error)

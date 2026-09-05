@@ -13,12 +13,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -28,40 +27,31 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.dockermobile.app.docker.UiPort
-import com.dockermobile.app.docker.stateColor
+import com.dockermobile.app.ui.theme.AppTheme
 
-/** Little green/amber/red state dot like the ASCII mockup. */
+/**
+ * State dot. Only ever used next to a text label — see [StatusBadge] — so the
+ * state never depends on colour perception alone.
+ */
 @Composable
 fun StatusDot(state: String, modifier: Modifier = Modifier) {
     Box(
-        modifier = modifier
-            .size(10.dp)
-            .background(stateColor(state), CircleShape)
+        modifier
+            .size(8.dp)
+            .background(statusTint(state), CircleShape)
     )
 }
 
+/** Grouped card with an optional header, matching the inset-grouped list style. */
 @Composable
 fun SectionCard(
     modifier: Modifier = Modifier,
     title: String? = null,
+    footer: String? = null,
     content: @Composable () -> Unit,
 ) {
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-    ) {
-        Column(Modifier.padding(16.dp)) {
-            if (title != null) {
-                Text(
-                    title,
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.size(10.dp))
-            }
-            Column { content() }
-        }
+    InsetGroup(modifier = modifier, header = title, footer = footer) {
+        GroupBody { content() }
     }
 }
 
@@ -72,59 +62,91 @@ fun PortChips(
     enabled: Boolean = true,
     onTap: (UiPort) -> Unit,
 ) {
-    if (ports.isEmpty()) return
+    if (ports.none { it.publicPort != null }) return
     FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         ports.filter { it.publicPort != null }.forEach { p ->
-            AssistChip(
+            TapTag(
+                label = "${p.publicPort} → ${p.containerPort}",
+                icon = Icons.AutoMirrored.Filled.OpenInNew,
                 onClick = { if (enabled) onTap(p) },
-                label = { Text(":${p.publicPort}→${p.containerPort}") },
             )
         }
     }
 }
 
+/**
+ * Inline, non-modal error. Failures that people can keep working around belong
+ * next to the content, not behind an alert.
+ */
 @Composable
 fun ErrorBanner(message: String?, onDismiss: () -> Unit = {}) {
     if (message.isNullOrBlank()) return
-    Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0x33F85149)),
-        shape = RoundedCornerShape(10.dp),
+    Surface(
+        color = AppTheme.colors.statusError.copy(alpha = if (AppTheme.colors.isDark) 0.18f else 0.10f),
+        shape = MaterialTheme.shapes.medium,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
-            Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            Modifier.padding(start = 16.dp, top = 6.dp, bottom = 6.dp, end = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
                 message,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onErrorContainer,
+                color = AppTheme.colors.statusError,
                 modifier = Modifier.weight(1f),
             )
-            TextButton(onClick = onDismiss) { Text("Dismiss") }
+            TextButton(onClick = onDismiss) {
+                Text("Dismiss", style = MaterialTheme.typography.labelLarge)
+            }
         }
     }
 }
 
+/**
+ * Confirmation for an irreversible action. Destructive verbs are coloured and
+ * named ("Remove", not "OK") so the outcome is readable from the button alone.
+ */
 @Composable
 fun ConfirmDialog(
     title: String,
     body: String,
     confirmLabel: String = "Confirm",
+    destructive: Boolean = true,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val haptics = rememberHaptics()
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = { Text(body) },
-        confirmButton = {
-            TextButton(onClick = { onConfirm(); onDismiss() }) { Text(confirmLabel) }
+        shape = MaterialTheme.shapes.large,
+        containerColor = AppTheme.colors.elevated,
+        title = { Text(title, style = MaterialTheme.typography.titleLarge) },
+        text = {
+            Text(
+                body,
+                style = MaterialTheme.typography.bodySmall,
+                color = AppTheme.colors.labelSecondary,
+            )
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        confirmButton = {
+            TextButton(onClick = { haptics.warning(); onConfirm(); onDismiss() }) {
+                Text(
+                    confirmLabel,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (destructive) AppTheme.colors.statusError
+                    else MaterialTheme.colorScheme.primary,
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", style = MaterialTheme.typography.labelLarge)
+            }
+        },
     )
 }
 
@@ -139,20 +161,26 @@ fun MonoText(
         text,
         modifier = modifier,
         fontFamily = FontFamily.Monospace,
-        style = MaterialTheme.typography.bodySmall,
+        style = MaterialTheme.typography.labelMedium,
         color = color,
     )
 }
 
+/** Label on the left, value on the right — the standard settings row shape. */
 @Composable
 fun KeyValueRow(key: String, value: String) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(key, style = MaterialTheme.typography.bodyMedium)
+        Spacer(Modifier.width(12.dp))
         Text(
-            key,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.width(120.dp),
+            value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = AppTheme.colors.labelSecondary,
+            modifier = Modifier.weight(1f),
+            textAlign = androidx.compose.ui.text.style.TextAlign.End,
         )
-        Text(value, style = MaterialTheme.typography.bodySmall)
     }
 }

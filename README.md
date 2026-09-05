@@ -208,9 +208,10 @@ Practical notes:
 
 ## Architecture in one page
 
-- **UI** — Kotlin + Jetpack Compose + Material 3, Docker-dark palette
-  (`#0B1220` bg, `#1D63ED` primary, green/amber/red status dots). Single
-  activity, bottom-nav with 4 tabs + container detail with 4 panes.
+- **UI** — Kotlin + Jetpack Compose on an Apple HIG-derived design system:
+  semantic light/dark palette (`#1D63ED` accent, one colour per state), a
+  17pt-based type scale, inset grouped lists and collapsing large titles.
+  Single activity, tab bar with 4 tabs + container detail with 4 panes.
 - **Docker client** — pure OkHttp against the Engine API; `JsonElement` parsing
   (no codegen, tolerant of daemon versions). Logs/events/pull are streamed via
   okio `BufferedSource` with an 8-byte frame demuxer that auto-detects TTY vs

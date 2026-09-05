@@ -16,6 +16,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.unit.dp
 import com.dockermobile.app.core.Format
 import com.dockermobile.app.core.LocalGraph
@@ -44,15 +45,16 @@ fun StatsPane(containerId: String) {
         }
     }
 
-    Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
+    Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         Spacer(Modifier.height(12.dp))
         ErrorBanner(error)
 
         val s = stats
         if (s == null) {
             Text(
-                "Waiting for stats…",
+                "Waiting for the first sample…",
                 Modifier.padding(16.dp),
+                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             return@Column
@@ -66,7 +68,8 @@ fun StatsPane(containerId: String) {
             Spacer(Modifier.height(8.dp))
             LinearProgressIndicator(
                 progress = { (s.cpuPercentSafe / 100.0).toFloat().coerceIn(0f, 1f) },
-                modifier = Modifier.fillMaxWidth(),
+                strokeCap = StrokeCap.Round,
+                modifier = Modifier.fillMaxWidth().height(8.dp),
             )
         }
 
@@ -81,13 +84,14 @@ fun StatsPane(containerId: String) {
             Spacer(Modifier.height(8.dp))
             LinearProgressIndicator(
                 progress = { (s.memPercentSafe / 100.0).toFloat().coerceIn(0f, 1f) },
-                modifier = Modifier.fillMaxWidth(),
+                strokeCap = StrokeCap.Round,
+                modifier = Modifier.fillMaxWidth().height(8.dp),
             )
         }
 
         Spacer(Modifier.height(10.dp))
 
-        SectionCard(title = "Network (cumulative)") {
+        SectionCard(title = "Network", footer = "Counted since the container started.") {
             KeyValueRow("Received", Format.humanBytes(s.netRxBytes))
             KeyValueRow("Sent", Format.humanBytes(s.netTxBytes))
         }

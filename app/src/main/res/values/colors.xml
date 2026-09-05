@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="window_bg">#0B1220</color>
+    <!-- Light appearance: the grouped-content base plane. -->
+    <color name="window_bg">#F2F2F7</color>
     <color name="ic_launcher_bg">#1D63ED</color>
 </resources>

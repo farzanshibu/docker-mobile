@@ -5,35 +5,35 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -52,14 +52,24 @@ import com.dockermobile.app.docker.QuickRun
 import com.dockermobile.app.docker.QuickRuns
 import com.dockermobile.app.docker.UiContainer
 import com.dockermobile.app.docker.UiPort
+import com.dockermobile.app.ui.components.appleSwitchColors
+import com.dockermobile.app.ui.components.ConfirmDialog
+import com.dockermobile.app.ui.components.EmptyState
 import com.dockermobile.app.ui.components.ErrorBanner
+import com.dockermobile.app.ui.components.FilledAction
+import com.dockermobile.app.ui.components.GroupBody
+import com.dockermobile.app.ui.components.GroupRow
+import com.dockermobile.app.ui.components.Hairline
+import com.dockermobile.app.ui.components.InsetGroup
+import com.dockermobile.app.ui.components.LargeTitleScaffold
+import com.dockermobile.app.ui.components.MinTouchTarget
 import com.dockermobile.app.ui.components.PortChips
-import com.dockermobile.app.ui.components.SectionCard
-import com.dockermobile.app.ui.components.StatusDot
+import com.dockermobile.app.ui.components.StatusBadge
 import com.dockermobile.app.ui.components.openPortInBrowser
+import com.dockermobile.app.ui.components.rememberHaptics
+import com.dockermobile.app.ui.theme.AppTheme
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ContainersScreen(
     onOpenContainer: (String, String, Int) -> Unit,
@@ -69,8 +79,10 @@ fun ContainersScreen(
     val repo = graph.repo
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val haptics = rememberHaptics()
     val snackbar = remember { SnackbarHostState() }
     var showDeploy by remember { mutableStateOf(false) }
+    var removeTarget by remember { mutableStateOf<UiContainer?>(null) }
 
     val containers by repo.containers.collectAsState()
     val error by repo.lastError.collectAsState()
@@ -82,77 +94,69 @@ fun ContainersScreen(
         repo.messages.collect { snackbar.showSnackbar(it.take(140)) }
     }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
+    LargeTitleScaffold(
+        title = "Containers",
         snackbarHost = { SnackbarHost(snackbar) },
-        topBar = {
-            TopAppBar(
-                title = { Text("Docker Mobile") },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                ),
-                actions = {
-                    IconButton(onClick = { scope.launch { repo.refresh() } }) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "Refresh")
-                    }
-                    IconButton(onClick = onOpenSettings) {
-                        Icon(Icons.Filled.Settings, contentDescription = "Settings")
-                    }
-                },
-            )
-        },
-        floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = { showDeploy = true },
-                icon = { Icon(Icons.Filled.Add, contentDescription = null) },
-                text = { Text("Deploy") },
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-            )
+        actions = {
+            IconButton(onClick = { scope.launch { repo.refresh() } }) {
+                Icon(Icons.Filled.Refresh, contentDescription = "Refresh")
+            }
+            IconButton(onClick = onOpenSettings) {
+                Icon(Icons.Filled.Settings, contentDescription = "Settings")
+            }
+            IconButton(onClick = { haptics.selection(); showDeploy = true }) {
+                Icon(Icons.Filled.Add, contentDescription = "Deploy a container")
+            }
         },
     ) { padding ->
-        Column(
-            Modifier
+        LazyColumn(
+            modifier = Modifier
                 .padding(padding)
-                .fillMaxSize()
-                .padding(horizontal = 16.dp),
+                .fillMaxWidth(),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                start = 16.dp, end = 16.dp, top = 8.dp, bottom = 32.dp,
+            ),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            ErrorBanner(error)
-            Spacer(Modifier.height(8.dp))
-
+            if (error != null) {
+                item { ErrorBanner(error) { repo.lastError.value = null } }
+            }
             if (containers.isEmpty()) {
-                EmptyContainers(error != null)
-            } else {
-                LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.fillMaxSize(),
-                ) {
-                    items(containers, key = { it.id }) { c ->
-                        ContainerCard(
-                            container = c,
-                            hostForwards = hostForwards,
-                            onOpen = { onOpenContainer(c.id, c.name, 0) },
-                            onStart = { repo.containerAction(c.id, "start") },
-                            onStop = { repo.containerAction(c.id, "stop") },
-                            onRestart = { repo.containerAction(c.id, "restart") },
-                            onRemove = { repo.removeContainer(c.id, c.name) },
-                            onPortTap = { port ->
-                                val s = settings ?: return@ContainerCard
-                                val mapped = hostForwards[port.publicPort] ?: port.publicPort
-                                if (mapped != null) openPortInBrowser(context, s, mapped)
-                            },
-                        )
-                    }
-                    item { Spacer(Modifier.height(88.dp)) }
+                item {
+                    EmptyState(
+                        icon = Icons.Filled.Inbox,
+                        title = if (error != null) "Can't reach the daemon" else "No containers yet",
+                        message = if (error != null)
+                            "Start the embedded VM from the VM tab, or point the app at a remote daemon in Settings."
+                        else "Deploy an image to get your first container running.",
+                        actionLabel = if (error != null) null else "Deploy a container",
+                        onAction = if (error != null) null else ({ showDeploy = true }),
+                    )
                 }
+            }
+            items(containers, key = { it.id }) { c ->
+                ContainerCard(
+                    container = c,
+                    onOpen = { onOpenContainer(c.id, c.name, 0) },
+                    onStart = { haptics.success(); repo.containerAction(c.id, "start") },
+                    onStop = { haptics.selection(); repo.containerAction(c.id, "stop") },
+                    onRestart = { haptics.selection(); repo.containerAction(c.id, "restart") },
+                    onRemove = { removeTarget = c },
+                    onPortTap = { port ->
+                        val s = settings ?: return@ContainerCard
+                        val mapped = hostForwards[port.publicPort] ?: port.publicPort
+                        if (mapped != null) openPortInBrowser(context, s, mapped)
+                    },
+                )
             }
         }
     }
 
     if (showDeploy) {
-        DeployDialog(
+        DeploySheet(
             onDismiss = { showDeploy = false },
             onQuickRun = { run, restartAlways ->
+                haptics.success()
                 repo.runImage(
                     image = run.image,
                     name = null,
@@ -164,17 +168,11 @@ fun ContainersScreen(
                 showDeploy = false
             },
             onCustomRun = { image, portText, envText, restartAlways ->
-                val pairs = portText.split(',')
-                    .mapNotNull { entry ->
-                        val parts = entry.trim().split(':')
-                        if (parts.size == 2) {
-                            parts[0].toIntOrNull()?.let { h -> parts[1].toIntOrNull()?.let { c -> h to c } }
-                        } else null
-                    }
+                haptics.success()
                 repo.runImage(
                     image = image,
                     name = null,
-                    portPairs = pairs,
+                    portPairs = parsePortPairs(portText),
                     env = envText.split(',').map { it.trim() }.filter { it.contains('=') },
                     cmd = null,
                     restartAlways = restartAlways,
@@ -183,32 +181,29 @@ fun ContainersScreen(
             },
         )
     }
-}
 
-@Composable
-private fun EmptyContainers(hasError: Boolean) {
-    Column(
-        Modifier.fillMaxSize().padding(top = 80.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(
-            if (hasError) "Cannot reach the Docker daemon" else "No containers yet",
-            style = MaterialTheme.typography.titleMedium,
-        )
-        Spacer(Modifier.height(8.dp))
-        Text(
-            if (hasError) "Start the embedded VM from the VM tab, or check Settings."
-            else "Tap Deploy to run your first image.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+    removeTarget?.let { target ->
+        ConfirmDialog(
+            title = "Remove “${target.name}”?",
+            body = "The container and anything written inside it are deleted. Named volumes are kept.",
+            confirmLabel = "Remove",
+            onConfirm = { repo.removeContainer(target.id, target.name) },
+            onDismiss = { removeTarget = null },
         )
     }
 }
 
+internal fun parsePortPairs(text: String): List<Pair<Int, Int>> =
+    text.split(',').mapNotNull { entry ->
+        val parts = entry.trim().split(':')
+        if (parts.size == 2) {
+            parts[0].toIntOrNull()?.let { h -> parts[1].toIntOrNull()?.let { c -> h to c } }
+        } else null
+    }
+
 @Composable
 private fun ContainerCard(
     container: UiContainer,
-    hostForwards: Map<Int, Int>,
     onOpen: () -> Unit,
     onStart: () -> Unit,
     onStop: () -> Unit,
@@ -216,10 +211,14 @@ private fun ContainerCard(
     onRemove: () -> Unit,
     onPortTap: (UiPort) -> Unit,
 ) {
-    SectionCard(Modifier.clickable(onClick = onOpen)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            StatusDot(container.state)
-            Spacer(Modifier.padding(start = 10.dp))
+    val published = container.ports.any { it.publicPort != null }
+    InsetGroup {
+        Row(
+            Modifier
+                .clickable(onClick = onOpen)
+                .padding(start = 16.dp, end = 4.dp, top = 12.dp, bottom = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Column(Modifier.weight(1f)) {
                 Text(
                     container.name,
@@ -227,33 +226,75 @@ private fun ContainerCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                Spacer(Modifier.height(2.dp))
                 Text(
-                    "${container.image} · ${container.status}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    container.image,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = AppTheme.colors.labelSecondary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                Spacer(Modifier.height(6.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    StatusBadge(container.state)
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        container.status,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = AppTheme.colors.labelSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
-            if (container.state == "running") {
-                IconButton(onClick = onStop) { Icon(Icons.Filled.Pause, "Stop") }
-                IconButton(onClick = onRestart) { Icon(Icons.Filled.RestartAlt, "Restart") }
+            if (container.isRunning) {
+                IconButton(onClick = onStop, modifier = Modifier.size(MinTouchTarget)) {
+                    Icon(Icons.Filled.Pause, contentDescription = "Stop ${container.name}")
+                }
+                IconButton(onClick = onRestart, modifier = Modifier.size(MinTouchTarget)) {
+                    Icon(Icons.Filled.RestartAlt, contentDescription = "Restart ${container.name}")
+                }
             } else {
-                IconButton(onClick = onStart) { Icon(Icons.Filled.PlayArrow, "Start") }
-                IconButton(onClick = onRemove) { Icon(Icons.Filled.Delete, "Remove") }
+                IconButton(onClick = onStart, modifier = Modifier.size(MinTouchTarget)) {
+                    Icon(Icons.Filled.PlayArrow, contentDescription = "Start ${container.name}")
+                }
+                IconButton(onClick = onRemove, modifier = Modifier.size(MinTouchTarget)) {
+                    Icon(
+                        Icons.Filled.Delete,
+                        contentDescription = "Remove ${container.name}",
+                        tint = AppTheme.colors.statusError,
+                    )
+                }
+            }
+            Text(
+                "›",
+                style = MaterialTheme.typography.headlineSmall,
+                color = AppTheme.colors.labelTertiary,
+                modifier = Modifier.padding(end = 8.dp),
+            )
+        }
+        if (published) {
+            Hairline()
+            Row(Modifier.padding(horizontal = 12.dp, vertical = 2.dp)) {
+                PortChips(container.ports, onTap = onPortTap)
             }
         }
-        Spacer(Modifier.height(8.dp))
-        PortChips(container.ports, enabled = true, onTap = onPortTap)
     }
 }
 
+/**
+ * Deploying is a multi-field task, not a yes/no question, so it belongs in a
+ * sheet rather than an alert — alerts are reserved for critical, actionable
+ * interruptions.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DeployDialog(
+private fun DeploySheet(
     onDismiss: () -> Unit,
     onQuickRun: (QuickRun, Boolean) -> Unit,
     onCustomRun: (image: String, ports: String, env: String, restartAlways: Boolean) -> Unit,
 ) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var image by remember { mutableStateOf("") }
     var ports by remember { mutableStateOf("8080:80") }
     var env by remember { mutableStateOf("") }
@@ -261,78 +302,89 @@ private fun DeployDialog(
     // phone) restarts, which defeats leaving the phone up as a server.
     var restartAlways by remember { mutableStateOf(true) }
 
-    AlertDialog(
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        title = { Text("Deploy a container") },
-        text = {
-            Column {
-                Text("Quick start", style = MaterialTheme.typography.titleSmall)
-                Spacer(Modifier.height(6.dp))
-                QuickRuns.all.forEach { run ->
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable { onQuickRun(run, restartAlways) }
-                            .padding(vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text("${run.label} — ${run.image}", style = MaterialTheme.typography.bodyMedium)
-                            Text(
-                                run.description,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                }
-                Spacer(Modifier.height(12.dp))
-                Text("Custom", style = MaterialTheme.typography.titleSmall)
-                Spacer(Modifier.height(6.dp))
-                OutlinedTextField(
-                    value = image, onValueChange = { image = it },
-                    label = { Text("Image (e.g. nginx)") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(Modifier.height(6.dp))
-                OutlinedTextField(
-                    value = ports, onValueChange = { ports = it },
-                    label = { Text("Ports (host:container, comma-sep)") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(Modifier.height(6.dp))
-                OutlinedTextField(
-                    value = env, onValueChange = { env = it },
-                    label = { Text("Env (KEY=VAL, comma-sep)") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(Modifier.height(6.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(
-                        checked = restartAlways,
-                        onCheckedChange = { restartAlways = it },
+        sheetState = sheetState,
+        containerColor = AppTheme.colors.base,
+        shape = MaterialTheme.shapes.large,
+    ) {
+        Column(
+            Modifier
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
+            Text("Deploy a container", style = MaterialTheme.typography.headlineMedium)
+
+            InsetGroup(header = "Quick start") {
+                QuickRuns.all.forEachIndexed { index, run ->
+                    if (index > 0) Hairline()
+                    GroupRow(
+                        title = run.label,
+                        subtitle = "${run.image} · ${run.description}",
+                        onClick = { onQuickRun(run, restartAlways) },
                     )
-                    Column {
-                        Text("Restart automatically", style = MaterialTheme.typography.bodyMedium)
-                        Text(
-                            "Comes back after a VM or phone restart",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
                 }
             }
-        },
-        confirmButton = {
-            TextButton(
+
+            InsetGroup(
+                header = "Custom image",
+                footer = "Ports map host to container, comma separated. Environment entries look like KEY=value.",
+            ) {
+                GroupBody {
+                    OutlinedTextField(
+                        value = image,
+                        onValueChange = { image = it },
+                        label = { Text("Image") },
+                        placeholder = { Text("nginx") },
+                        singleLine = true,
+                        shape = MaterialTheme.shapes.small,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedTextField(
+                        value = ports,
+                        onValueChange = { ports = it },
+                        label = { Text("Ports") },
+                        placeholder = { Text("8080:80") },
+                        singleLine = true,
+                        shape = MaterialTheme.shapes.small,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedTextField(
+                        value = env,
+                        onValueChange = { env = it },
+                        label = { Text("Environment") },
+                        placeholder = { Text("KEY=value") },
+                        singleLine = true,
+                        shape = MaterialTheme.shapes.small,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+
+            InsetGroup(footer = "Restarted containers come back on their own after the VM or the phone reboots.") {
+                GroupRow(
+                    title = "Restart automatically",
+                    showChevron = false,
+                    trailing = {
+                        Switch(
+                            checked = restartAlways,
+                            onCheckedChange = { restartAlways = it },
+                            colors = appleSwitchColors(),
+                        )
+                    },
+                )
+            }
+
+            FilledAction(
+                label = "Run image",
                 onClick = { if (image.isNotBlank()) onCustomRun(image.trim(), ports, env, restartAlways) },
-            ) { Text("Run") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Close") }
-        },
-    )
+                enabled = image.isNotBlank(),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
 }

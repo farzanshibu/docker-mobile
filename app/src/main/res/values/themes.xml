@@ -1,8 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.DockerMobile" parent="android:Theme.Material.NoActionBar">
+    <!--
+      Launch theme for the light appearance. The window background matches the
+      Compose base plane so there is no flash of the wrong colour at cold start,
+      and the system bars are transparent because the app draws edge to edge.
+    -->
+    <style name="Theme.DockerMobile" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@color/window_bg</item>
-        <item name="android:statusBarColor">@color/window_bg</item>
-        <item name="android:navigationBarColor">@color/window_bg</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
     </style>
 </resources>

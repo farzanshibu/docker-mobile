@@ -1,7 +1,5 @@
 package com.dockermobile.app.docker
 
-import androidx.compose.ui.graphics.Color
-
 /** A published/mapped port on a container. */
 data class UiPort(
     val hostIp: String?,
@@ -62,12 +60,4 @@ sealed class VmPhase {
     data object Running : VmPhase()
     data object Stopping : VmPhase()
     data class Failed(val message: String) : VmPhase()
-}
-
-fun stateColor(state: String): Color = when (state) {
-    "running" -> Color(0xFF3FB950)      // green
-    "paused", "restarting" -> Color(0xFFD29922)  // amber
-    "created", "removing" -> Color(0xFF8B949E)   // grey
-    "exited", "dead" -> Color(0xFFF85149)        // red
-    else -> Color(0xFF8B949E)
 }

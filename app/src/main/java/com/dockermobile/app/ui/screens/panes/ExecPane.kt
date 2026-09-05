@@ -14,7 +14,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -34,7 +34,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.dockermobile.app.core.LocalGraph
 import com.dockermobile.app.docker.ExecSession
+import com.dockermobile.app.ui.components.MinTouchTarget
 import com.dockermobile.app.ui.components.MonoText
+import com.dockermobile.app.ui.components.TapTag
+import com.dockermobile.app.ui.theme.AppTheme
 import kotlinx.coroutines.launch
 
 /**
@@ -68,18 +71,18 @@ fun ExecPane(containerId: String) {
         if (rendered.isNotEmpty()) listState.scrollToItem(rendered.size - 1)
     }
 
-    Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
+    Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         Spacer(Modifier.height(8.dp))
         Text(
             when (status) {
-                com.dockermobile.app.docker.ExecStatus.IDLE -> "idle"
-                com.dockermobile.app.docker.ExecStatus.CONNECTING -> "connecting…"
-                com.dockermobile.app.docker.ExecStatus.CONNECTED -> "connected"
-                com.dockermobile.app.docker.ExecStatus.CLOSED -> "closed — tap Reconnect"
-                com.dockermobile.app.docker.ExecStatus.FAILED -> "failed — tap Reconnect"
+                com.dockermobile.app.docker.ExecStatus.IDLE -> "Idle"
+                com.dockermobile.app.docker.ExecStatus.CONNECTING -> "Connecting…"
+                com.dockermobile.app.docker.ExecStatus.CONNECTED -> "Connected"
+                com.dockermobile.app.docker.ExecStatus.CLOSED -> "Closed — tap Reconnect"
+                com.dockermobile.app.docker.ExecStatus.FAILED -> "Failed — tap Reconnect"
             },
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelMedium,
+            color = AppTheme.colors.labelSecondary,
         )
         Spacer(Modifier.height(6.dp))
 
@@ -92,22 +95,18 @@ fun ExecPane(containerId: String) {
         }
 
         // Shortcut row
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+        ) {
             listOf("Ctrl+C" to ExecSession.CTRL_C, "Ctrl+D" to ExecSession.CTRL_D, "Tab" to ExecSession.TAB)
                 .forEach { (label, keys) ->
-                    androidx.compose.material3.AssistChip(
-                        onClick = { scope.launch { session.send(keys) } },
-                        label = { Text(label) },
-                        modifier = Modifier.padding(end = 6.dp),
-                    )
+                    TapTag(label = label, onClick = { scope.launch { session.send(keys) } })
                 }
             if (status != com.dockermobile.app.docker.ExecStatus.CONNECTED &&
                 status != com.dockermobile.app.docker.ExecStatus.CONNECTING
             ) {
-                androidx.compose.material3.AssistChip(
-                    onClick = { session.start(scope) },
-                    label = { Text("Reconnect") },
-                )
+                TapTag(label = "Reconnect", onClick = { session.start(scope) })
             }
         }
         Spacer(Modifier.height(6.dp))
@@ -116,19 +115,21 @@ fun ExecPane(containerId: String) {
             OutlinedTextField(
                 value = input,
                 onValueChange = { input = it },
-                placeholder = { Text("Type a command…") },
+                placeholder = { Text("Type a command") },
                 singleLine = true,
+                shape = MaterialTheme.shapes.small,
                 modifier = Modifier.weight(1f),
             )
             Spacer(Modifier.width(8.dp))
             IconButton(
+                modifier = Modifier.size(MinTouchTarget),
                 onClick = {
                     val cmd = input
                     input = ""
                     scope.launch { session.send(cmd + "\n") }
                 },
             ) {
-                Icon(Icons.Filled.Send, contentDescription = "Send", Modifier.size(22.dp))
+                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send", Modifier.size(22.dp))
             }
         }
         Spacer(Modifier.height(8.dp))
