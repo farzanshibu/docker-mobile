@@ -9,7 +9,8 @@ and every DT_NEEDED/DT_SONAME referring to it rewritten. The replacement name
 is always shorter than the original ("libz.so.1" -> "libz1.so"), so the strings
 are patched in place inside .dynstr and no offsets move.
 """
-import os, re, sys, shutil, struct, subprocess, tarfile, urllib.request, urllib.parse
+import os, re, sys, time, shutil, struct, subprocess, tarfile
+import urllib.request, urllib.error, urllib.parse
 
 REPO = "https://packages.termux.dev/apt/termux-main"
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -21,10 +22,17 @@ ROOT_PKG = "qemu-system-aarch64-headless"
 INDEX_URL = f"{REPO}/dists/stable/main/binary-aarch64/Packages.gz"
 
 
-def ensure_index():
-    """Fetch the apt Packages index next to this script if it is not there."""
+# Termux drops a package version from the pool as soon as a newer one lands, so
+# an index older than this only produces 404s.
+INDEX_MAX_AGE = 6 * 3600
+
+
+def ensure_index(force=False):
+    """Fetch the apt Packages index next to this script, refreshing it if stale."""
     path = os.path.join(HERE, "Packages")
-    if os.path.exists(path) and os.path.getsize(path) > 0:
+    fresh = (os.path.exists(path) and os.path.getsize(path) > 0
+             and time.time() - os.path.getmtime(path) < INDEX_MAX_AGE)
+    if fresh and not force:
         return path
     import gzip
     print(f"fetching package index: {INDEX_URL}")
@@ -34,9 +42,9 @@ def ensure_index():
     return path
 
 
-def load_index():
+def load_index(force=False):
     pkgs, cur = {}, {}
-    with open(ensure_index(), encoding="utf-8", errors="replace") as f:
+    with open(ensure_index(force), encoding="utf-8", errors="replace") as f:
         for line in f:
             line = line.rstrip("\n")
             if not line:
@@ -79,15 +87,26 @@ def closure(pkgs, roots):
 
 # ---------------------------------------------------------------- download
 
-def fetch(pkgs, name):
+def deb_url(pkgs, name):
     fn = pkgs[name]["Filename"]
-    url = f"{REPO}/{fn}".replace(":", "%3A", 1) if ":" in os.path.basename(fn) else f"{REPO}/{fn}"
-    url = f"{REPO}/" + "/".join(urllib.parse.quote(p) for p in fn.split("/"))
+    return f"{REPO}/" + "/".join(urllib.parse.quote(p) for p in fn.split("/"))
+
+
+def fetch(pkgs, name):
     dest = os.path.join(WORK, "debs", name + ".deb")
     if os.path.exists(dest) and os.path.getsize(dest) > 0:
         return dest
     os.makedirs(os.path.dirname(dest), exist_ok=True)
-    urllib.request.urlretrieve(url, dest)
+    try:
+        urllib.request.urlretrieve(deb_url(pkgs, name), dest)
+    except urllib.error.HTTPError as e:
+        if e.code != 404:
+            raise
+        # The pool moved on since the index was written: refresh it once and
+        # retry with whatever version the mirror carries now.
+        print(f"  404 for {name}, refreshing package index")
+        pkgs.update(load_index(force=True))
+        urllib.request.urlretrieve(deb_url(pkgs, name), dest)
     return dest
 
 

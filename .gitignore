@@ -16,3 +16,8 @@ vm-assets/
 *.img
 *.gz
 
+
+# apt index + staged debs are fetched at build time
+tools/Packages
+tools/work/
+__pycache__/
