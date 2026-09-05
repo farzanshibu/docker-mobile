@@ -1,0 +1,136 @@
+name: Release APK
+
+# Builds a signed release APK and attaches it to a GitHub Release.
+#
+# Signing material comes from repository secrets, never from the repo:
+#   ANDROID_KEYSTORE_BASE64    base64 of the .jks
+#   ANDROID_KEYSTORE_PASSWORD
+#   ANDROID_KEY_ALIAS
+#   ANDROID_KEY_PASSWORD
+#
+# Without those secrets the build still runs and produces an unsigned APK, so
+# forks can use this workflow too.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish the APK under"
+        required: true
+        default: "v0.1.0"
+      include_qemu:
+        description: "Bundle QEMU + libs so the embedded VM works (GPL, see notes)"
+        type: boolean
+        default: true
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Derive version from tag
+        id: version
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          NAME="${TAG#v}"
+          # versionCode must increase monotonically: 1.2.3 -> 10203
+          CODE=$(echo "$NAME" | awk -F. '{printf "%d%02d%02d", $1, $2, $3}')
+          echo "tag=$TAG"          >> "$GITHUB_OUTPUT"
+          echo "name=$NAME"        >> "$GITHUB_OUTPUT"
+          echo "code=${CODE:-1}"   >> "$GITHUB_OUTPUT"
+
+      - name: Bundle QEMU into jniLibs
+        if: ${{ github.event.inputs.include_qemu != 'false' }}
+        run: |
+          python3 tools/bundle_qemu.py --stage-only
+          python3 tools/select_qemu_libs.py app/src/main/jniLibs/arm64-v8a
+          du -sh app/src/main/jniLibs/arm64-v8a
+
+      - name: Decode keystore
+        id: keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            echo "path=$RUNNER_TEMP/release.jks" >> "$GITHUB_OUTPUT"
+          else
+            echo "No signing secrets set — the APK will be unsigned." >&2
+            echo "path=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build release APK
+        env:
+          KEYSTORE_FILE: ${{ steps.keystore.outputs.path }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          VERSION_NAME: ${{ steps.version.outputs.name }}
+          VERSION_CODE: ${{ steps.version.outputs.code }}
+        run: ./gradlew --no-daemon assembleRelease
+
+      - name: Verify signature
+        id: verify
+        run: |
+          APK=$(find app/build/outputs/apk/release -name '*.apk' | head -1)
+          echo "apk=$APK" >> "$GITHUB_OUTPUT"
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          if "$BT/apksigner" verify --print-certs "$APK"; then
+            echo "signed=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "signed=no" >> "$GITHUB_OUTPUT"
+          fi
+          ls -lh "$APK"
+
+      - name: Rename artifact
+        id: rename
+        run: |
+          OUT="docker-mobile-${{ steps.version.outputs.name }}.apk"
+          cp "${{ steps.verify.outputs.apk }}" "$OUT"
+          sha256sum "$OUT" | tee "$OUT.sha256"
+          echo "apk=$OUT" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.rename.outputs.apk }}
+          path: ${{ steps.rename.outputs.apk }}
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: Docker Mobile ${{ steps.version.outputs.name }}
+          body: |
+            Signed release APK for arm64-v8a devices (Android 8.0+).
+
+            Signature verified in CI: **${{ steps.verify.outputs.signed }}**
+
+            The embedded VM also needs the Alpine assets — in the app go to
+            **VM tab → Asset mirror URL** and paste the download base URL of a
+            [VM assets release](https://github.com/${{ github.repository }}/releases),
+            then **Download all**.
+
+            ---
+            This APK bundles `qemu-system-aarch64` and its shared libraries,
+            taken from the Termux package repository. QEMU is licensed under the
+            GPL v2; corresponding sources are published by the QEMU project and
+            by Termux at https://github.com/termux/termux-packages.
+          files: |
+            ${{ steps.rename.outputs.apk }}
+            ${{ steps.rename.outputs.apk }}.sha256

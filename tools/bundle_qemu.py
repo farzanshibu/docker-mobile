@@ -18,9 +18,25 @@ ROOT_PKG = "qemu-system-aarch64-headless"
 
 # ---------------------------------------------------------------- apt index
 
+INDEX_URL = f"{REPO}/dists/stable/main/binary-aarch64/Packages.gz"
+
+
+def ensure_index():
+    """Fetch the apt Packages index next to this script if it is not there."""
+    path = os.path.join(HERE, "Packages")
+    if os.path.exists(path) and os.path.getsize(path) > 0:
+        return path
+    import gzip
+    print(f"fetching package index: {INDEX_URL}")
+    raw = urllib.request.urlopen(INDEX_URL, timeout=120).read()
+    with open(path, "wb") as f:
+        f.write(gzip.decompress(raw))
+    return path
+
+
 def load_index():
     pkgs, cur = {}, {}
-    with open(os.path.join(HERE, "Packages"), encoding="utf-8", errors="replace") as f:
+    with open(ensure_index(), encoding="utf-8", errors="replace") as f:
         for line in f:
             line = line.rstrip("\n")
             if not line:
@@ -162,7 +178,9 @@ def patch_elf(path, rename):
 # ------------------------------------------------------------------- main
 
 def main():
-    dest = sys.argv[1]
+    args = [a for a in sys.argv[1:] if not a.startswith("-")]
+    stage_only = "--stage-only" in sys.argv
+    dest = args[0] if args else None
     pkgs = load_index()
     want = closure(pkgs, [ROOT_PKG])
     print(f"closure: {len(want)} packages")
@@ -197,6 +215,12 @@ def main():
     rename = {fn: android_name(fn) for fn in libs}
     renamed = {k: v for k, v in rename.items() if k != v}
     print(f"libs: {len(libs)}  renamed: {len(renamed)}")
+
+    # Staging is all select_qemu_libs.py needs; it computes the real runtime
+    # closure itself instead of shipping every lib the apt graph drags in.
+    if stage_only or dest is None:
+        print("staged only — run select_qemu_libs.py to emit jniLibs")
+        return
 
     os.makedirs(dest, exist_ok=True)
     for old, src in sorted(libs.items()):
