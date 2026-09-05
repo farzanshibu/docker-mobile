@@ -144,6 +144,11 @@ truncate -s "${SIZE_MB}M" "$IMG"
 # ("mounting /dev/vda on /sysroot failed: Invalid argument").
 mkfs.ext4 -F -q -O ^metadata_csum_seed,^orphan_file -d "$ROOT" "$IMG"
 
+# The container runs as root with a restrictive umask, so everything it drops
+# in the bind mount comes out mode 0600 root-owned. On Linux (CI included) the
+# calling user then cannot even read its own build output.
+chmod 0644 "$OUT/vmlinuz-virt" "$OUT/initramfs-virt" "$IMG"
+
 echo "rootfs ready: $IMG"
 EOS
 
