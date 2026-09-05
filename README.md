@@ -42,6 +42,34 @@ Verified end to end on an arm64 Android 16 emulator: QEMU 11.0.3 (TCG) → Alpin
 
 ---
 
+## Install
+
+Grab the signed APK from [Releases](https://github.com/Project-Xman/docker-mobile/releases)
+(arm64-v8a, Android 8.0+), verify it if you like, and sideload it:
+
+```bash
+curl -LO https://github.com/Project-Xman/docker-mobile/releases/download/v0.1.0/docker-mobile-0.1.0.apk
+curl -LO https://github.com/Project-Xman/docker-mobile/releases/download/v0.1.0/docker-mobile-0.1.0.apk.sha256
+shasum -a 256 -c docker-mobile-0.1.0.apk.sha256
+adb install docker-mobile-0.1.0.apk
+```
+
+Then open the app → **VM tab → Asset mirror URL** → paste the download base URL
+of a VM-assets release, e.g.
+
+```
+https://github.com/Project-Xman/docker-mobile/releases/download/vm-assets-v1
+```
+
+→ **Download all** → **Start VM**. The APK ships QEMU; the Alpine image is a
+separate ~146 MB download because it expands to a multi-GB disk image.
+
+Both artifacts are built by GitHub Actions
+(`.github/workflows/release-apk.yml` and `vm-assets.yml`); the APK is signed in
+CI from repository secrets and `apksigner`-verified before publishing.
+
+---
+
 ## Important: what this repository contains
 
 This is the **complete Android Studio project** (full source). It is *not* a
